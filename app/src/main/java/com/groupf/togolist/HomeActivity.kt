@@ -2,8 +2,10 @@ package com.groupf.togolist
 
 import android.content.Intent
 import android.os.Bundle
+import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.TextView
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.navigation.NavigationView
 import androidx.navigation.findNavController
@@ -14,6 +16,12 @@ import androidx.navigation.ui.setupWithNavController
 import androidx.drawerlayout.widget.DrawerLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
+import com.groupf.driverapp.Model.UserInfoModel
 import com.groupf.togolist.databinding.ActivityHomeBinding
 
 class HomeActivity : AppCompatActivity() {
@@ -46,6 +54,39 @@ class HomeActivity : AppCompatActivity() {
         )
         setupActionBarWithNavController(navController, appBarConfiguration)
         navView.setupWithNavController(navController)
+
+        updateNavHeader(navView)  // Call to update the navigation header.
+    }
+
+    private fun updateNavHeader(navView: NavigationView) {
+        val headerView = navView.getHeaderView(0)
+        val tvHeaderTitle = headerView.findViewById<TextView>(R.id.tv_header_title)
+        val tvHeaderSubtitle = headerView.findViewById<TextView>(R.id.tv_header_subtitle)
+
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        if (currentUser != null) {
+            // Reference to the user info in the database
+            val userInfoRef = FirebaseDatabase.getInstance().getReference("UserInfo").child(currentUser.uid)
+            userInfoRef.addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(dataSnapshot: DataSnapshot) {
+                    if (dataSnapshot.exists()) {
+                        val userInfo = dataSnapshot.getValue(UserInfoModel::class.java)
+                        tvHeaderTitle.text = "Welcome, ${userInfo?.firstName}"
+                        tvHeaderSubtitle.text = "Logged in as ${if (currentUser?.email.isNullOrEmpty()) currentUser?.phoneNumber.takeUnless { it.isNullOrEmpty() } ?: "No Email nor Phone" else currentUser.email}"
+                    } else {
+                        tvHeaderTitle.text = "Welcome, User"
+                        tvHeaderSubtitle.text = "No additional user info"
+                    }
+                }
+
+                override fun onCancelled(databaseError: DatabaseError) {
+                    Log.d("Database Error", databaseError.message)
+                }
+            })
+        } else {
+            tvHeaderTitle.text = "Welcome, Guest"
+            tvHeaderSubtitle.text = "Please log in"
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

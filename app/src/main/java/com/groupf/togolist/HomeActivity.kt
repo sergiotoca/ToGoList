@@ -2,21 +2,24 @@ package com.groupf.togolist
 
 import android.content.Intent
 import android.os.Bundle
+import android.text.InputType
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.EditText
 import android.widget.TextView
-import com.google.android.material.snackbar.Snackbar
-import com.google.android.material.navigation.NavigationView
+import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.appcompat.app.AppCompatActivity
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.navigation.findNavController
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
-import androidx.drawerlayout.widget.DrawerLayout
-import androidx.appcompat.app.AppCompatActivity
+import com.google.android.material.navigation.NavigationView
+import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
@@ -37,11 +40,8 @@ class HomeActivity : AppCompatActivity() {
 
         setSupportActionBar(binding.appBarHome.toolbar)
 
-        binding.appBarHome.fab.setOnClickListener { view ->
-            Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-                .setAction("Action", null)
-                .setAnchorView(R.id.fab).show()
-        }
+        binding.appBarHome.fab.setOnClickListener { showSearchDialog() }
+
         val drawerLayout: DrawerLayout = binding.drawerLayout
         val navView: NavigationView = binding.navView
         val navController = findNavController(R.id.nav_host_fragment_content_home)
@@ -72,7 +72,12 @@ class HomeActivity : AppCompatActivity() {
                     if (dataSnapshot.exists()) {
                         val userInfo = dataSnapshot.getValue(UserInfoModel::class.java)
                         tvHeaderTitle.text = "Welcome, ${userInfo?.firstName}"
-                        tvHeaderSubtitle.text = "Logged in as ${if (currentUser?.email.isNullOrEmpty()) currentUser?.phoneNumber.takeUnless { it.isNullOrEmpty() } ?: "No Email nor Phone" else currentUser.email}"
+                        tvHeaderSubtitle.text = "Logged in as ${
+                            if (currentUser.email.isNullOrEmpty())
+                                currentUser.phoneNumber.takeUnless { it.isNullOrEmpty() } ?: "No Email nor Phone"
+                            else
+                                currentUser.email
+                        }"
                     } else {
                         tvHeaderTitle.text = "Welcome, User"
                         tvHeaderSubtitle.text = "No additional user info"
@@ -87,6 +92,31 @@ class HomeActivity : AppCompatActivity() {
             tvHeaderTitle.text = "Welcome, Guest"
             tvHeaderSubtitle.text = "Please log in"
         }
+    }
+
+    private fun showSearchDialog() {
+        val builder = AlertDialog.Builder(this)
+        builder.setTitle("Search")
+
+        // Set up the input
+        val input = EditText(this)
+        input.inputType = InputType.TYPE_CLASS_TEXT
+        builder.setView(input)
+
+        // Set up the buttons
+        builder.setPositiveButton("Search") { _, _ ->
+            val searchText = input.text.toString()
+            performSearch(searchText)
+        }
+        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
+
+        builder.show()
+    }
+
+    private fun performSearch(searchText: String) {
+        // Here you can add the code to perform the search
+        // For now, we will just show a toast with the search text
+        Toast.makeText(this, "Searching for: $searchText", Toast.LENGTH_SHORT).show()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {

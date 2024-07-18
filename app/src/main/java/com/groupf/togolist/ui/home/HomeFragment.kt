@@ -1,17 +1,23 @@
 package com.groupf.togolist.ui.home
 
+import android.content.Context
 import android.content.res.Resources
+import android.location.Geocoder
 import android.location.LocationRequest
 import android.os.Bundle
 import android.os.Looper
+import android.text.InputType
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.RelativeLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.res.ResourcesCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.google.android.gms.location.FusedLocationProviderClient
@@ -25,6 +31,7 @@ import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.gms.maps.model.MarkerOptions
+import com.google.android.material.snackbar.Snackbar
 import com.groupf.togolist.R
 import com.groupf.togolist.databinding.FragmentHomeBinding
 import com.karumi.dexter.Dexter
@@ -32,6 +39,7 @@ import com.karumi.dexter.MultiplePermissionsReport
 import com.karumi.dexter.PermissionToken
 import com.karumi.dexter.listener.PermissionRequest
 import com.karumi.dexter.listener.multi.MultiplePermissionsListener
+import java.io.IOException
 
 class HomeFragment : Fragment(), OnMapReadyCallback {
 
@@ -60,6 +68,8 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
 
         _binding = FragmentHomeBinding.inflate(inflater, container, false)
         val root: View = binding.root
+
+        _binding!!.fab.setOnClickListener { showSearchDialog() }
 
 //        val textView: TextView = binding.textHome
 //        homeViewModel.text.observe(viewLifecycleOwner) {
@@ -100,6 +110,60 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         _binding = null
     }
 
+    private fun showSearchDialog() {
+        val builder = AlertDialog.Builder(requireContext())
+        builder.setTitle("Search")
+
+        // Set up the input
+        val input = EditText(requireContext())
+        input.inputType = InputType.TYPE_CLASS_TEXT
+        builder.setView(input)
+
+        // Set up the buttons
+        builder.setPositiveButton("Search") { _, _ ->
+            val searchText = input.text.toString()
+            performSearch(searchText)
+        }
+        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
+
+        builder.show()
+    }
+
+    private fun performSearch(searchText: String) {
+        // Here you can add the code to perform the search
+        // For now, we will just show a toast with the search text
+        Toast.makeText(requireContext(), "Searching for: $searchText", Toast.LENGTH_SHORT).show()
+        var latLng = getCoordinatesFromAddress(requireContext(), searchText)
+        if(latLng != null)
+            mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 18f))
+
+    }
+
+    fun getCoordinatesFromAddress(context: Context, addressString: String): LatLng? {
+        val geocoder = Geocoder(context)
+        try {
+            val addressList = geocoder.getFromLocationName(addressString, 1)
+            if (addressList != null && addressList.isNotEmpty()) {
+                val address = addressList[0]
+                val latLng = LatLng(address.latitude, address.longitude)
+                return latLng
+            } else {
+                // Handle case where no address found
+                Toast.makeText(context, "No location found", Toast.LENGTH_SHORT).show()
+                return null
+            }
+        } catch (e: IOException) {
+            e.printStackTrace()
+            return null
+        }
+    }
+
+    fun saveLocation(latLng: LatLng) {
+        // Logic to save the location, e.g., to a database or a local list
+        Toast.makeText(requireContext(), "Location saved", Toast.LENGTH_SHORT).show()
+        // Handle the saving to store into the users database
+    }
+
     /**
      * Manipulates the map once available.
      * This callback is triggered when the map is ready to be used.
@@ -128,7 +192,7 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
                         //Enable Button
                         mMap.isMyLocationEnabled = true
                         mMap.uiSettings.isMyLocationButtonEnabled = true
-                        mMap.setOnMyLocationClickListener {
+                        mMap.setOnMyLocationButtonClickListener {
                             fusedLocationProviderClient.lastLocation
                                 .addOnFailureListener { e ->
                                     Toast.makeText(context!!, e.message, Toast.LENGTH_SHORT).show()
@@ -140,24 +204,35 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
                                 }
                             true
                         }
+                        mMap.setOnMapClickListener { latLong ->
+                            var marker = mMap.addMarker(MarkerOptions().position(latLong).title("User Marker"))
+                            mMap.moveCamera(CameraUpdateFactory.newLatLng(latLong))
+                            // Show Snackbar with a confirmation action
+                            Snackbar.make(requireView(), "Save this location?", Snackbar.LENGTH_LONG)
+                                .setAction("Save") {
+                                    // Handle the save action
+                                    saveLocation(latLong)
+                                    Toast.makeText(context, "Location saved!", Toast.LENGTH_SHORT).show()
+                                }
+                                .setActionTextColor(ResourcesCompat.getColor(resources, R.color.colorPrimary, null))
+                                .addCallback(object : Snackbar.Callback() {
+                                    override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
+                                        if (event == DISMISS_EVENT_ACTION) {
+                                            // Snackbar action was pressed
+                                        } else {
+                                            // Snackbar dismissed without action, remove the marker
+                                            marker?.remove()
+                                        }
+                                    }
+                                })
+                                .show()
 
-                        // Layout - Correctly handle the location button
-                        val mapView = mapFragment.requireView()
-                        val locationButton: View = (mapView.findViewById<View>(Integer.parseInt("1"))!!.parent as View).findViewById(Integer.parseInt("2"))
-
-                        if (locationButton is ImageView) {
-                            // You might not need to adjust the layout params if the view is ImageView
-                            Log.d("Permissions", "Found the location button as ImageView.")
-                        } else if (locationButton is ViewGroup) {
-                            Log.d("Permissions", "Found the location button as ViewGroup.")
-                            val params = locationButton.layoutParams as RelativeLayout.LayoutParams
-                            params.addRule(RelativeLayout.ALIGN_TOP, 0)
-                            params.addRule(RelativeLayout.ALIGN_PARENT_BOTTOM, RelativeLayout.TRUE)
-                            params.bottomMargin = 50
-                            locationButton.layoutParams = params
-                        } else {
-                            Log.d("Permissions", "Location button is of an unexpected type: ${locationButton.javaClass.simpleName}")
                         }
+                        mMap.setOnMarkerClickListener { marker ->
+                            marker.remove()
+                            true
+                        }
+
                     } else {
                         Log.d("Permissions", "Not all permissions are granted.")
                     }
@@ -184,7 +259,7 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
 
         }
 
-        // Add a marker in Sydney and move the camera
+         //Add a marker in Sydney and move the camera
 //        val sydney = LatLng(-34.0, 151.0)
 //        mMap.addMarker(MarkerOptions().position(sydney).title("Marker in Sydney"))
 //        mMap.moveCamera(CameraUpdateFactory.newLatLng(sydney))

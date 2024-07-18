@@ -1,5 +1,6 @@
 package com.groupf.togolist
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
@@ -40,8 +41,6 @@ class HomeActivity : AppCompatActivity() {
 
         setSupportActionBar(binding.appBarHome.toolbar)
 
-        binding.appBarHome.fab.setOnClickListener { showSearchDialog() }
-
         val drawerLayout: DrawerLayout = binding.drawerLayout
         val navView: NavigationView = binding.navView
         val navController = findNavController(R.id.nav_host_fragment_content_home)
@@ -68,6 +67,7 @@ class HomeActivity : AppCompatActivity() {
             // Reference to the user info in the database
             val userInfoRef = FirebaseDatabase.getInstance().getReference("UserInfo").child(currentUser.uid)
             userInfoRef.addListenerForSingleValueEvent(object : ValueEventListener {
+                @SuppressLint("SetTextI18n")
                 override fun onDataChange(dataSnapshot: DataSnapshot) {
                     if (dataSnapshot.exists()) {
                         val userInfo = dataSnapshot.getValue(UserInfoModel::class.java)
@@ -94,30 +94,7 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    private fun showSearchDialog() {
-        val builder = AlertDialog.Builder(this)
-        builder.setTitle("Search")
 
-        // Set up the input
-        val input = EditText(this)
-        input.inputType = InputType.TYPE_CLASS_TEXT
-        builder.setView(input)
-
-        // Set up the buttons
-        builder.setPositiveButton("Search") { _, _ ->
-            val searchText = input.text.toString()
-            performSearch(searchText)
-        }
-        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
-
-        builder.show()
-    }
-
-    private fun performSearch(searchText: String) {
-        // Here you can add the code to perform the search
-        // For now, we will just show a toast with the search text
-        Toast.makeText(this, "Searching for: $searchText", Toast.LENGTH_SHORT).show()
-    }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         // Inflate the menu; this adds items to the action bar if it is present.

@@ -23,13 +23,6 @@
 
     <include layout="@layout/content_home" />
 
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fab"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="bottom|end"
-        android:layout_marginEnd="@dimen/fab_margin"
-        android:layout_marginBottom="100dp"
-        app:srcCompat="@drawable/baseline_search_24" />
+
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

@@ -35,6 +35,7 @@ class HomeActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        FirebaseDatabase.getInstance().setPersistenceEnabled(true);
 
         binding = ActivityHomeBinding.inflate(layoutInflater)
         setContentView(binding.root)

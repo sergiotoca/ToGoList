@@ -32,6 +32,7 @@ import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.android.material.snackbar.Snackbar
+import com.google.firebase.database.FirebaseDatabase
 import com.groupf.togolist.R
 import com.groupf.togolist.databinding.FragmentHomeBinding
 import com.karumi.dexter.Dexter
@@ -101,7 +102,7 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
             }
         }
 
-        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(context!!)
+        fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(requireContext())
         fusedLocationProviderClient.requestLocationUpdates(locationRequest,locationCallback, Looper.myLooper())
     }
 
@@ -158,11 +159,29 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         }
     }
 
-    fun saveLocation(latLng: LatLng) {
-        // Logic to save the location, e.g., to a database or a local list
-        Toast.makeText(requireContext(), "Location saved", Toast.LENGTH_SHORT).show()
-        // Handle the saving to store into the users database
+    private fun saveLocation(latLng: LatLng) {
+        val database = FirebaseDatabase.getInstance()
+        val myReference = database.getReference("locations")
+
+        // Create a unique key for each location
+        val locationId = myReference.push().key
+
+        if (locationId != null) {
+            val locationData = mapOf(
+                "latitude" to latLng.latitude,
+                "longitude" to latLng.longitude
+            )
+
+            myReference.child(locationId).setValue(locationData)
+                .addOnSuccessListener {
+                    Toast.makeText(requireContext(), "Location saved to Firebase", Toast.LENGTH_SHORT).show()
+                }
+                .addOnFailureListener { e ->
+                    Toast.makeText(requireContext(), "Failed to save location: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+        }
     }
+
 
     /**
      * Manipulates the map once available.

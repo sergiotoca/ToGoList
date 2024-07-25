@@ -12,9 +12,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
-import android.widget.ImageView
-import android.widget.RelativeLayout
-import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.res.ResourcesCompat
@@ -30,8 +27,8 @@ import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapStyleOptions
+import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
-import com.google.android.material.snackbar.Snackbar
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
 import com.groupf.togolist.R
@@ -49,6 +46,7 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
     private lateinit var homeViewModel: HomeViewModel
     private var _binding: FragmentHomeBinding? = null
     private lateinit var mapFragment: SupportMapFragment
+    private var currentMarker: Marker? = null
 
     // Location
     private lateinit var locationRequest: com.google.android.gms.location.LocationRequest
@@ -121,6 +119,9 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         val latLng = getCoordinatesFromAddress(requireContext(), searchText)
         if (latLng != null) {
             mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 18f))
+            addMarker(latLng)
+        } else {
+            Toast.makeText(requireContext(), "Location not found", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -141,7 +142,7 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         }
     }
 
-    private fun saveLocation(latLng: LatLng) {
+    private fun saveLocation(latLng: LatLng, note: String) {
         val database = FirebaseDatabase.getInstance()
         val currentUser = FirebaseAuth.getInstance().currentUser
 
@@ -152,7 +153,8 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
             if (locationId != null) {
                 val locationData = mapOf(
                     "latitude" to latLng.latitude,
-                    "longitude" to latLng.longitude
+                    "longitude" to latLng.longitude,
+                    "note" to note
                 )
 
                 myReference.child(locationId).setValue(locationData)
@@ -198,21 +200,7 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
                         mMap.setOnMapClickListener { latLong ->
                             val marker = mMap.addMarker(MarkerOptions().position(latLong).title("User Marker"))
                             mMap.moveCamera(CameraUpdateFactory.newLatLng(latLong))
-
-                            Snackbar.make(requireView(), "Save this location?", Snackbar.LENGTH_LONG)
-                                .setAction("Save") {
-                                    saveLocation(latLong)
-                                    Toast.makeText(context, "Location saved!", Toast.LENGTH_SHORT).show()
-                                }
-                                .setActionTextColor(ResourcesCompat.getColor(resources, R.color.colorPrimary, null))
-                                .addCallback(object : Snackbar.Callback() {
-                                    override fun onDismissed(transientBottomBar: Snackbar?, event: Int) {
-                                        if (event != DISMISS_EVENT_ACTION) {
-                                            marker?.remove()
-                                        }
-                                    }
-                                })
-                                .show()
+                            showSaveLocationDialog(latLong)
                         }
                         mMap.setOnMarkerClickListener { marker ->
                             marker.remove()
@@ -240,5 +228,32 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         } catch (e: Resources.NotFoundException) {
             e.printStackTrace()
         }
+    }
+
+    private fun showSaveLocationDialog(latLong: LatLng) {
+        val builder = AlertDialog.Builder(requireContext())
+        builder.setTitle("Save Location")
+
+        val input = EditText(requireContext())
+        input.inputType = InputType.TYPE_CLASS_TEXT
+        input.hint = "Add a note"
+        builder.setView(input)
+
+        builder.setPositiveButton("Save") { _, _ ->
+            val note = input.text.toString()
+            saveLocation(latLong, note)
+//            addMarker(latLong, note)
+        }
+        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
+
+        builder.show()
+    }
+
+    private fun addMarker(latLong: LatLng, title: String = "Searched Location") {
+        if (currentMarker != null) {
+            currentMarker?.remove()
+        }
+        currentMarker = mMap.addMarker(MarkerOptions().position(latLong).title(title))
+        mMap.moveCamera(CameraUpdateFactory.newLatLng(latLong))
     }
 }

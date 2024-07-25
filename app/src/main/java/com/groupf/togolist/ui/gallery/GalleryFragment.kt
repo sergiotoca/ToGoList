@@ -17,6 +17,8 @@ import com.google.firebase.database.ValueEventListener
 import com.groupf.togolist.Model.LocationItem
 import com.groupf.togolist.adapter.LocationAdapter
 import com.groupf.togolist.databinding.FragmentGalleryBinding
+import androidx.navigation.fragment.findNavController
+import com.groupf.togolist.R
 
 class GalleryFragment : Fragment() {
 
@@ -43,7 +45,13 @@ class GalleryFragment : Fragment() {
 //        }
         locationRecyclerView = binding.locationRecyclerView
         locationRecyclerView.layoutManager = LinearLayoutManager(requireContext())
-        locationAdapter = LocationAdapter(locationList)
+        locationAdapter = LocationAdapter(locationList) { location ->
+            val bundle = Bundle().apply {
+                putFloat("latitude", location.latitude.toFloat())
+                putFloat("longitude", location.longitude.toFloat())
+            }
+            findNavController().navigate(R.id.action_galleryFragment_to_homeFragment, bundle)
+        }
         locationRecyclerView.adapter = locationAdapter
 
         val userId = FirebaseAuth.getInstance().currentUser?.uid

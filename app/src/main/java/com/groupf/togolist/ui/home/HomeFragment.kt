@@ -43,6 +43,7 @@ import java.io.IOException
 class HomeFragment : Fragment(), OnMapReadyCallback {
 
     private lateinit var mMap: GoogleMap
+    private var latLng: LatLng? = null
     private lateinit var homeViewModel: HomeViewModel
     private var _binding: FragmentHomeBinding? = null
     private lateinit var mapFragment: SupportMapFragment
@@ -54,6 +55,17 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
     private lateinit var fusedLocationProviderClient: FusedLocationProviderClient
 
     private val binding get() = _binding!!
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        arguments?.let {
+            val latitude = it.getFloat("latitude", Float.NaN)
+            val longitude = it.getFloat("longitude", Float.NaN)
+            if (!latitude.isNaN() && !longitude.isNaN()) {
+                latLng = LatLng(latitude.toDouble(), longitude.toDouble())
+            }
+        }
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -74,22 +86,25 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
     }
 
     private fun init() {
-        locationRequest = com.google.android.gms.location.LocationRequest()
-        locationRequest.setPriority(com.google.android.gms.location.LocationRequest.PRIORITY_HIGH_ACCURACY)
-        locationRequest.setFastestInterval(3000)
-        locationRequest.interval = 5000
-        locationRequest.setSmallestDisplacement(10f)
+        locationRequest = com.google.android.gms.location.LocationRequest.create().apply {
+            priority = com.google.android.gms.location.LocationRequest.PRIORITY_HIGH_ACCURACY
+            fastestInterval = 3000
+            interval = 5000
+            smallestDisplacement = 10f
+        }
 
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult?) {
                 super.onLocationResult(locationResult)
                 val newPos = LatLng(locationResult!!.lastLocation.latitude, locationResult!!.lastLocation.longitude)
-                mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(newPos, 18f))
+                if (latLng == null) {  // Only update the camera if no initial position is provided
+                    mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(newPos, 18f))
+                }
             }
         }
 
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(requireContext())
-        fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
+//        fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
     }
 
     override fun onDestroyView() {
@@ -206,6 +221,8 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
                             marker.remove()
                             true
                         }
+
+                        startLocationUpdates()
                     } else {
                         Log.d("Permissions", "Not all permissions are granted.")
                     }
@@ -228,6 +245,14 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         } catch (e: Resources.NotFoundException) {
             e.printStackTrace()
         }
+
+        latLng?.let {
+            addMarkerAndMoveCamera(it)
+        }
+    }
+
+    private fun startLocationUpdates() {
+        fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
     }
 
     private fun showSaveLocationDialog(latLong: LatLng, marker: Marker?) {
@@ -257,5 +282,10 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         }
         currentMarker = mMap.addMarker(MarkerOptions().position(latLong).title(title))
         mMap.moveCamera(CameraUpdateFactory.newLatLng(latLong))
+    }
+
+    private fun addMarkerAndMoveCamera(latLng: LatLng) {
+        mMap.addMarker(MarkerOptions().position(latLng).title("Selected Location"))
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLng, 18f))
     }
 }

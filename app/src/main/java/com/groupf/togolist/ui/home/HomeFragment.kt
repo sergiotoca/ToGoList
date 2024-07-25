@@ -200,7 +200,7 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
                         mMap.setOnMapClickListener { latLong ->
                             val marker = mMap.addMarker(MarkerOptions().position(latLong).title("User Marker"))
                             mMap.moveCamera(CameraUpdateFactory.newLatLng(latLong))
-                            showSaveLocationDialog(latLong)
+                            showSaveLocationDialog(latLong, marker)
                         }
                         mMap.setOnMarkerClickListener { marker ->
                             marker.remove()
@@ -230,7 +230,7 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         }
     }
 
-    private fun showSaveLocationDialog(latLong: LatLng) {
+    private fun showSaveLocationDialog(latLong: LatLng, marker: Marker?) {
         val builder = AlertDialog.Builder(requireContext())
         builder.setTitle("Save Location")
 
@@ -244,7 +244,9 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
             saveLocation(latLong, note)
 //            addMarker(latLong, note)
         }
-        builder.setNegativeButton("Cancel") { dialog, _ -> dialog.cancel() }
+        builder.setNegativeButton("Cancel") { dialog, _ ->
+            marker?.remove()
+            dialog.cancel() }
 
         builder.show()
     }

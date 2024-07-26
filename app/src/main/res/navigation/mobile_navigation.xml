@@ -11,11 +11,9 @@
         android:label="@string/menu_home"
         tools:layout="@layout/fragment_home">
         <argument
-            android:name="latitude"
-            app:argType="float" />
-        <argument
-            android:name="longitude"
-            app:argType="float" />
+            android:name="placeIds"
+            app:argType="string[]"
+            app:nullable="true" />
     </fragment>
 
     <fragment
@@ -32,5 +30,10 @@
         android:id="@+id/nav_slideshow"
         android:name="com.groupf.togolist.ui.slideshow.SlideshowFragment"
         android:label="@string/menu_slideshow"
-        tools:layout="@layout/fragment_slideshow" />
+        tools:layout="@layout/fragment_slideshow">
+        <action
+            android:id="@+id/action_slideshowFragment_to_homeFragment"
+            app:destination="@id/nav_home" />
+    </fragment>
+
 </navigation>

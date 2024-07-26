@@ -11,7 +11,10 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
 import android.widget.EditText
+import android.widget.Spinner
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.res.ResourcesCompat
@@ -26,11 +29,16 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.OnMapReadyCallback
 import com.google.android.gms.maps.SupportMapFragment
 import com.google.android.gms.maps.model.LatLng
+import com.google.android.gms.maps.model.LatLngBounds
 import com.google.android.gms.maps.model.MapStyleOptions
 import com.google.android.gms.maps.model.Marker
 import com.google.android.gms.maps.model.MarkerOptions
 import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
+import com.groupf.togolist.Model.LocationItem
 import com.groupf.togolist.R
 import com.groupf.togolist.databinding.FragmentHomeBinding
 import com.karumi.dexter.Dexter
@@ -43,7 +51,7 @@ import java.io.IOException
 class HomeFragment : Fragment(), OnMapReadyCallback {
 
     private lateinit var mMap: GoogleMap
-    private var latLng: LatLng? = null
+    private var placeIds: Array<String>? = null
     private lateinit var homeViewModel: HomeViewModel
     private var _binding: FragmentHomeBinding? = null
     private lateinit var mapFragment: SupportMapFragment
@@ -59,11 +67,7 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         arguments?.let {
-            val latitude = it.getFloat("latitude", Float.NaN)
-            val longitude = it.getFloat("longitude", Float.NaN)
-            if (!latitude.isNaN() && !longitude.isNaN()) {
-                latLng = LatLng(latitude.toDouble(), longitude.toDouble())
-            }
+            placeIds = it.getStringArray("placeIds")
         }
     }
 
@@ -96,15 +100,18 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult?) {
                 super.onLocationResult(locationResult)
-                val newPos = LatLng(locationResult!!.lastLocation.latitude, locationResult!!.lastLocation.longitude)
-                if (latLng == null) {  // Only update the camera if no initial position is provided
+                placeIds?.let { ids ->
+                    fetchAndPinUnvisitedPlaces(ids)
+                } ?: run {
+                    // Start location updates if there are no place IDs to pin
+                    val newPos = LatLng(locationResult!!.lastLocation.latitude, locationResult!!.lastLocation.longitude)
                     mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(newPos, 18f))
                 }
+
             }
         }
 
         fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(requireContext())
-//        fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
     }
 
     override fun onDestroyView() {
@@ -157,23 +164,27 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
         }
     }
 
-    private fun saveLocation(latLng: LatLng, note: String) {
+    private fun saveLocation(latLng: LatLng, note: String, list: String) {
         val database = FirebaseDatabase.getInstance()
         val currentUser = FirebaseAuth.getInstance().currentUser
 
         if (currentUser != null) {
-            val myReference = database.getReference("UserLocations").child(currentUser.uid)
-            val locationId = myReference.push().key
+            val userId = currentUser.uid
+            val locationReference = database.getReference("UserLocations").child(userId)
+            val listReference = database.getReference("UserLists").child(userId).child(list)
+            val locationId = locationReference.push().key
 
             if (locationId != null) {
                 val locationData = mapOf(
                     "latitude" to latLng.latitude,
                     "longitude" to latLng.longitude,
-                    "note" to note
+                    "note" to note,
+                    "list" to list
                 )
 
-                myReference.child(locationId).setValue(locationData)
+                locationReference.child(locationId).setValue(locationData)
                     .addOnSuccessListener {
+                        listReference.child(locationId).setValue(true)
                         Toast.makeText(requireContext(), "Location saved to Firebase", Toast.LENGTH_SHORT).show()
                     }
                     .addOnFailureListener { e ->
@@ -208,6 +219,7 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
                                     if (location != null) {
                                         val userLatLng = LatLng(location.latitude, location.longitude)
                                         mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(userLatLng, 18f))
+                                        placeIds = null
                                     }
                                 }
                             true
@@ -222,7 +234,11 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
                             true
                         }
 
-                        startLocationUpdates()
+                        placeIds?.let { ids ->
+                            fetchAndPinUnvisitedPlaces(ids)
+                        } ?: run {
+                            startLocationUpdates()
+                        }
                     } else {
                         Log.d("Permissions", "Not all permissions are granted.")
                     }
@@ -246,34 +262,130 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
             e.printStackTrace()
         }
 
-        latLng?.let {
-            addMarkerAndMoveCamera(it)
-        }
     }
 
     private fun startLocationUpdates() {
         fusedLocationProviderClient.requestLocationUpdates(locationRequest, locationCallback, Looper.myLooper())
     }
 
-    private fun showSaveLocationDialog(latLong: LatLng, marker: Marker?) {
-        val builder = AlertDialog.Builder(requireContext())
-        builder.setTitle("Save Location")
+    private fun fetchAndPinUnvisitedPlaces(placeIds: Array<String>) {
+        val database = FirebaseDatabase.getInstance()
+        val currentUser = FirebaseAuth.getInstance().currentUser
 
-        val input = EditText(requireContext())
-        input.inputType = InputType.TYPE_CLASS_TEXT
-        input.hint = "Add a note"
-        builder.setView(input)
+        if (currentUser != null) {
+            val userId = currentUser.uid
+            val locationsReference = database.getReference("UserLocations").child(userId)
 
-        builder.setPositiveButton("Save") { _, _ ->
-            val note = input.text.toString()
-            saveLocation(latLong, note)
-//            addMarker(latLong, note)
+            val boundsBuilder = LatLngBounds.Builder()
+
+            locationsReference.addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    var hasUnvisitedPlaces = false
+                    var singleLocationLatLng: LatLng? = null
+
+                    for (placeId in placeIds) {
+                        val locationSnapshot = snapshot.child(placeId)
+                        val locationItem = locationSnapshot.getValue(LocationItem::class.java)
+                        if (locationItem != null && locationItem.visited == false) {
+                            hasUnvisitedPlaces = true
+                            val latLng = LatLng(locationItem.latitude, locationItem.longitude)
+                            mMap.addMarker(MarkerOptions().position(latLng).title(locationItem.note))
+                            boundsBuilder.include(latLng)
+                            if (placeIds.size == 1) {
+                                singleLocationLatLng = latLng
+                            }
+                        }
+                    }
+
+                    if (hasUnvisitedPlaces) {
+                        if (placeIds.size == 1 && singleLocationLatLng != null) {
+                            mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(singleLocationLatLng, 18f))
+                        } else {
+                            val bounds = boundsBuilder.build()
+                            val padding = 100 // offset from edges of the map in pixels
+                            val cameraUpdate = CameraUpdateFactory.newLatLngBounds(bounds, padding)
+                            mMap.animateCamera(cameraUpdate)
+                        }
+                    } else {
+                        Toast.makeText(requireContext(), "No unvisited places to display", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    // Handle database error
+                }
+            })
+        } else {
+            // Handle user not logged in
         }
-        builder.setNegativeButton("Cancel") { dialog, _ ->
-            marker?.remove()
-            dialog.cancel() }
+    }
 
-        builder.show()
+
+    private fun fetchUserLists(callback: (List<String>) -> Unit) {
+        val database = FirebaseDatabase.getInstance()
+        val currentUser = FirebaseAuth.getInstance().currentUser
+        val userLists = mutableListOf<String>()
+
+        if (currentUser != null) {
+            val myReference = database.getReference("UserLists").child(currentUser.uid)
+            myReference.addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    for (listSnapshot in snapshot.children) {
+                        val listName = listSnapshot.key
+                        if (listName != null) {
+                            userLists.add(listName)
+                        }
+                    }
+                    userLists.add("Create new list")
+                    callback(userLists)
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Toast.makeText(requireContext(), "Failed to fetch lists: ${error.message}", Toast.LENGTH_SHORT).show()
+                }
+            })
+        } else {
+            Toast.makeText(requireContext(), "User not logged in", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun showSaveLocationDialog(latLong: LatLng, marker: Marker?) {
+        fetchUserLists { userLists ->
+            val builder = AlertDialog.Builder(requireContext())
+            builder.setTitle("Save Location")
+
+            val dialogView = layoutInflater.inflate(R.layout.dialog_save_location, null)
+            builder.setView(dialogView)
+
+            val inputNote = dialogView.findViewById<EditText>(R.id.inputNote)
+            val spinnerLists = dialogView.findViewById<Spinner>(R.id.spinnerLists)
+            val inputList = dialogView.findViewById<EditText>(R.id.inputList)
+
+            val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, userLists).apply {
+                setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            }
+            spinnerLists.adapter = adapter
+
+            spinnerLists.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+                override fun onItemSelected(parent: AdapterView<*>, view: View?, position: Int, id: Long) {
+                    inputList.visibility = if (userLists[position] == "Create new list") View.VISIBLE else View.GONE
+                }
+
+                override fun onNothingSelected(parent: AdapterView<*>) {}
+            }
+
+            builder.setPositiveButton("Save") { _, _ ->
+                val note = inputNote.text.toString()
+                val list = if (spinnerLists.selectedItem == "Create new list") inputList.text.toString() else spinnerLists.selectedItem.toString()
+                saveLocation(latLong, note, list)
+            }
+            builder.setNegativeButton("Cancel") { dialog, _ ->
+                marker?.remove()
+                dialog.cancel()
+            }
+
+            builder.show()
+        }
     }
 
     private fun addMarker(latLong: LatLng, title: String = "Searched Location") {
@@ -281,7 +393,7 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
             currentMarker?.remove()
         }
         currentMarker = mMap.addMarker(MarkerOptions().position(latLong).title(title))
-        mMap.moveCamera(CameraUpdateFactory.newLatLng(latLong))
+        mMap.moveCamera(CameraUpdateFactory.newLatLngZoom(latLong, 18f))
     }
 
     private fun addMarkerAndMoveCamera(latLng: LatLng) {

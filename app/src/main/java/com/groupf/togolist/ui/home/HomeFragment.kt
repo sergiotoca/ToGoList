@@ -137,32 +137,59 @@ class HomeFragment : Fragment(), OnMapReadyCallback {
     }
 
     private fun performSearch(searchText: String) {
-        Toast.makeText(requireContext(), "Searching for: $searchText", Toast.LENGTH_SHORT).show()
-        val latLng = getCoordinatesFromAddress(requireContext(), searchText)
-        if (latLng != null) {
-            mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 18f))
-            addMarker(latLng)
+        if (Geocoder.isPresent()) {
+            try {
+                Log.d("HomeFragment", "Searching for: $searchText")
+                val latLng = getCoordinatesFromAddress(requireContext(), searchText)
+                if (latLng != null) {
+                    Log.d("HomeFragment", "Location found: $latLng")
+                    mMap.animateCamera(CameraUpdateFactory.newLatLngZoom(latLng, 18f))
+                    addMarker(latLng)
+                } else {
+                    Log.d("HomeFragment", "Location not found")
+                    if (isAdded) {
+                        Toast.makeText(requireContext(), "Location not found", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: IOException) {
+                e.printStackTrace()
+                Log.e("HomeFragment", "Geocoder exception: ${e.message}")
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Log.e("HomeFragment", "Exception: ${e.message}")
+            }
         } else {
-            Toast.makeText(requireContext(), "Location not found", Toast.LENGTH_SHORT).show()
+            Log.e("HomeFragment", "Geocoder service is not available on this device.")
+            if (isAdded) {
+                Toast.makeText(requireContext(), "Geocoder service is not available on this device.", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
     fun getCoordinatesFromAddress(context: Context, addressString: String): LatLng? {
         val geocoder = Geocoder(context)
-        try {
+        return try {
+            Log.d("HomeFragment", "Using Geocoder to find location for: $addressString")
             val addressList = geocoder.getFromLocationName(addressString, 1)
             if (addressList != null && addressList.isNotEmpty()) {
                 val address = addressList[0]
-                return LatLng(address.latitude, address.longitude)
+                Log.d("HomeFragment", "Address found: $address")
+                LatLng(address.latitude, address.longitude)
             } else {
-                Toast.makeText(context, "No location found", Toast.LENGTH_SHORT).show()
-                return null
+                Log.d("HomeFragment", "No location found for the address: $addressString")
+                null
             }
         } catch (e: IOException) {
             e.printStackTrace()
-            return null
+            Log.e("HomeFragment", "Geocoder IOException: ${e.message}")
+            null
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Log.e("HomeFragment", "Geocoder Exception: ${e.message}")
+            null
         }
     }
+
 
     private fun saveLocation(latLng: LatLng, note: String, list: String) {
         val database = FirebaseDatabase.getInstance()
